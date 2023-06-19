@@ -1,0 +1,37 @@
+trigger:
+  - develop
+
+variables:
+  JVM_ARGS: '-Xms1g -Xmx4g'
+
+parameters:
+  - name: generateReport
+    default: true
+    type: boolean
+
+stages:
+  - stage: Server_Side
+    pool:
+      name:  PoolName
+    #dependsOn: [] only with enabled subscription
+    displayName: PerfTest_Server_Side
+    jobs:
+      - job: PerfTest
+        timeoutInMinutes: 90 # how long to run the job before automatically cancelling
+        displayName: PerfTest
+        steps:
+          - task: Bash@3
+            inputs:
+              targetType: 'inline'
+              script: |
+                mkdir k6-boilerplate/reports
+                docker run -u=root --rm --name=k6 -v $(Build.SourcesDirectory)/k6-boilerplate:/tmp -w /tmp grafana/k6 run /tmp/src/tests/$(TEST).js --out influxdb=http://$(InfluxIP):8086/demoTD --out json=/tmp/reports/test.json -e THINK_TIME=$(THINK_TIME) -e THINK_TIME_MAX=$(THINK_TIME_MAX) -e ENV_URL=$(ENV_URL) -e DURATION="$(DURATION)s" -e VUSERS=$(VUSERS) -e RAMP_UP="$(RAMP_UP)s"
+                cp "$(Build.SourcesDirectory)/k6-boilerplate/summary.html" k6-boilerplate/reports
+                ls -la k6-boilerplate/reports
+                sudo chmod -R 777 $(Build.SourcesDirectory)
+          - task: PublishPipelineArtifact@1
+            displayName: Publish K6 Reports
+            inputs:
+              targetPath: k6-boilerplate/reports
+              condition: and(always(), eq('${{ parameters.generateReport }}', 'true'))
+              artifact: k6_report
